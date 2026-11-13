@@ -174,11 +174,13 @@ describe('Every endpoint answers', () => {
 
   test('trackSlug takes a comma-separated list and matches the union', async () => {
     const boot = await api.json('/bootstrap');
-    const [a, b] = boot.tracks.map((t) => t.slug);
     const idsFor = async (slug) => (await api.json(`/sessions?day=${days[1]}&trackSlug=${slug}`)).map((s) => s.id);
+    const running = [];
+    for (const t of boot.tracks) if ((await idsFor(t.slug)).length) running.push(t.slug);
+    assert.ok(running.length >= 2, 'two tracks run on the day');
+    const [a, b] = running;
     const onlyA = await idsFor(a);
     const onlyB = await idsFor(b);
-    assert.ok(onlyA.length > 0 && onlyB.length > 0, 'both tracks run on the day');
 
     const both = (await api.json(`/sessions?day=${days[1]}&trackSlug=${a},${b}`)).map((s) => s.id);
     assert.deepEqual([...both].sort(), [...onlyA, ...onlyB].sort());
