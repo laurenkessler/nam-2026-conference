@@ -233,3 +233,46 @@ test.describe('Ended sessions', () => {
     for (const l of ['Venue', 'Level', 'Format', 'Topic']) await expect(page.getByLabel(l)).toBeVisible();
   });
 });
+
+test.describe('Schedule track filter', () => {
+  test('several tracks can be on at once', async ({ page }) => {
+    const boot = await (await fetch(`${API}/bootstrap`)).json();
+    const [a, b] = boot.tracks;
+    const day = (await conferenceDays())[1];
+    const count = async (slug) => (await (await fetch(`${API}/sessions?day=${day}&trackSlug=${slug}`)).json()).length;
+    const label = (t) => new RegExp(`^${(t.shortName ?? t.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+    const pill = (t) => page.getByRole('button', { name: label(t) });
+    const result = page.getByTestId('result-count');
+    const expectCount = async (n) => expect(result).toHaveText(new RegExp(`^${n} sessions?\\b`));
+
+    await visit(page, `/schedule?view=list&day=${day}`);
+    await waitForResults(page);
+    const filters = page.getByRole('button', { name: /^Filters/ });
+    if (await filters.isVisible()) await filters.click();
+    const all = page.getByRole('button', { name: 'All', exact: true });
+    await expect(all).toHaveAttribute('aria-pressed', 'true');
+
+    await pill(a).click();
+    await pill(b).click();
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'true');
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'true');
+    await expect(all).toHaveAttribute('aria-pressed', 'false');
+    await expectCount(await count(`${a.slug},${b.slug}`));
+    await shotForPR(page, 'two tracks selected');
+
+    await pill(a).click();
+    await expect(pill(a)).toHaveAttribute('aria-pressed', 'false');
+    await expectCount(await count(b.slug));
+
+    await pill(a).click();
+    await all.click();
+    await expect(page).not.toHaveURL(/track=/);
+    await expect(pill(b)).toHaveAttribute('aria-pressed', 'false');
+    await expectCount((await (await fetch(`${API}/sessions?day=${day}`)).json()).length);
+
+    // an old single-track link still works
+    await visit(page, `/schedule?view=list&day=${day}&track=${a.slug}`);
+    await waitForResults(page);
+    await expectCount(await count(a.slug));
+  });
+});
